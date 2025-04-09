@@ -1,0 +1,6 @@
+2025-04-09T02:16:21.308763691+00:00 - Patient#1: Patient created
+2025-04-09T02:16:21.308880648+00:00 - Patient#1: Committed changes: Initial patient creation
+2025-04-09T02:16:44.160746111+00:00 - Patient#1: Prescribed: amitriptiline 20000mg daily
+2025-04-09T02:16:44.160950832+00:00 - Patient#1: Committed changes: Prescribed amitriptiline 20000mg daily
+2025-04-09T02:18:24.399440477+00:00 - Patient#1: Added BP: 120/80
+2025-04-09T02:18:24.399605064+00:00 - Patient#1: Committed changes: Added BP: 120/80

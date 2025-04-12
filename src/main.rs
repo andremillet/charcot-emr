@@ -1,8 +1,70 @@
 // src/main.rs
 // Charcot EMR: Command-line interface for the EMR system
 
-use std::path::Path;
-use anyhow::{Result, anyhowfn load_patient(emr: &mut EMR, args: &ArgMatches) -> Result<()> {
+use axum::{
+    routing::get,
+    Router,
+    Json, http::{StatusCode, Method},
+};
+use std::{path::Path, convert::Infallible};
+use anyhow::{Result, anyhow};
+use clap::{Command, Arg, ArgMatches, value_parser};
+use charcot_emr::*;
+use serde::{Serialize, Deserialize};
+#[cfg(test)]
+mod auth_tests;
+mod rbac_tests;
+
+pub mod auth;
+pub mod api;
+use axum::middleware::{self, Next};
+
+async fn get_patient_profile() -> (StatusCode, Json<api::patient_portal::PatientProfile>) {
+    (StatusCode::OK, Json(api::patient_portal::get_patient_profile()))
+}
+
+async fn get_medication_list() -> (StatusCode, Json<Vec<String>>) {
+    (StatusCode::OK, Json(api::patient_portal::get_medication_list()))
+}
+
+    patient_name: String,
+    medication_name: String,
+    dosage: String,
+    refill_quantity: u32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct User {
+    pub name: String,
+    pub role: String,
+}
+
+async fn auth_middleware<B>(
+    method: Method,
+    uri: http::Uri,
+    request: http::Request<B>,
+    next: Next<B>,
+) -> Result<http::Response<B>, StatusCode> {
+    let user = User {
+        name: "test_user".to_string(),
+        role: "Doctor".to_string(),
+    };
+
+    let path = uri.path();
+    if auth::check_authorization(&user.role, path) {
+        next.run(request).await
+    } else {
+        Err(StatusCode::FORBIDDEN).map(|e| e.into_response())
+    }
+
+async fn send_prescription(Json(payload): Json<PrescriptionRequest>) -> (StatusCode, Json<api::e_prescribing::Prescription>) {
+    patient_name: String,
+    medication_name: String,
+    dosage: String,
+    refill_quantity: u32,
+}
+
+fn load_patient(emr: &mut EMR, args: &ArgMatches) -> Result<()> {
     let filename = args.get_one::<String>("filename").unwrap();
     let key = args.get_one::<String>("key").unwrap();
     
@@ -39,11 +101,8 @@ fn print_usage() {
     println!("  emr_cli connect-device <patient_id> <device_type> <key>");
     println!("  emr_cli load <filename> <key>");
 };
-use clap::{Command, Arg, ArgMatches, value_parser};
-use charcot_emr::*;
 
-fn main() -> Result<()> {
-    // Set up command-line interface
+fn build_cli() -> Command {
     let matches = Command::new("Charcot EMR")
         .version("0.1.0")
         .author("Charcot Team")
@@ -89,7 +148,16 @@ fn main() -> Result<()> {
                 .arg(Arg::new("filename").required(true).help("Path to the .med file"))
                 .arg(Arg::new("key").required(true).help("Encryption key for the patient file"))
         )
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Set up command-line interface
+    let matches = build_cli()
         .get_matches();
+
+    // Start axum server
+    tokio::spawn(start_axum_server());
 
     let mut emr = EMR::new()?;
     
@@ -105,6 +173,34 @@ fn main() -> Result<()> {
         }
     }
 }
+
+async fn start_axum_server() {
+    let app = Router::new()
+        .route("/patient/profile", get(get_patient_profile))
+        .route("/patient/medications", get(get_medication_list))
+        .route("/prescription/send", axum::routing::post(send_prescription))
+        .layer(middleware::from_fn(auth_middleware));
+
+    let addr = "127.0.0.1:3000";
+    println!("Starting server on {}", addr);
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+use axum::response::IntoResponse;
+
+
+
+async fn prescription_handler(Json(payload): Json<PrescriptionRequest>) -> (StatusCode, Json<api::e_prescribing::Prescription>) {
+    let prescription = api::e_prescribing::send_prescription(
+        payload.patient_name,
+        payload.medication_name,
+        payload.dosage,
+        payload.refill_quantity,
+    );
+
+    Ok((StatusCode::CREATED, Json(prescription)))
+}
+
 
 fn create_patient(emr: &mut EMR, args: &ArgMatches) -> Result<()> {
     let id = args.get_one::<String>("id").unwrap();
@@ -195,3 +291,16 @@ fn connect_device(emr: &mut EMR, args: &ArgMatches) -> Result<()> {
     
     println!("Connected device {} to patient {}", device_type, patient_id);
     Ok(())
+}
+
+#[cfg(test)]
+mod auth_tests;
+
+#[cfg(test)]
+mod rbac_tests;
+
+#[cfg(test)]
+mod patients_tests;
+
+#[cfg(test)]
+mod e_prescribing_tests;

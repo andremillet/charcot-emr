@@ -251,6 +251,7 @@ impl EMR {
         
         Ok(())
     }
+}
 
     // Create a new patient
     pub fn create_patient(&mut self, id: &str, given_name: &str, family_name: &str, 

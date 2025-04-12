@@ -11,7 +11,7 @@ COPY Cargo.toml Cargo.lock ./
 RUN cargo build --release
 
 # Remove the source code, to reduce image size
-RUN rm -rf src
+RUN rm -rf .
 
 # Copy the rest of the source code
 COPY . .
